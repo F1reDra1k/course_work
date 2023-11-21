@@ -3,10 +3,6 @@
   "balance_uah": 10000.0,
   "balance_usd": 0.0,
   "history": [
-    {
-      "timestamp": "2023-11-19 16:31:01.877760",
-      "event": "Rate changed",
-      "rate": 35.8
-    }
+
   ]
 }
