@@ -13,7 +13,6 @@ class Trader:
             with open('state.json') as state_file:
                 state = json.load(state_file)
         except (FileNotFoundError, json.JSONDecodeError):
-            # Use default state if file not found or if there's a decoding error
             state = {
                 "rate": self.config["rate"],
                 "balance_uah": self.config["available_uah"],
@@ -22,26 +21,24 @@ class Trader:
 
         return state
 
-    def to_dict(self):
-        return {
-            "rate": self.state["rate"],
-            "balance_uah": self.state["balance_uah"],
-            "balance_usd": self.state["balance_usd"]
-        }
-
     def save_state(self):
         with open('state.json', 'w') as state_file:
             json.dump(self.to_dict(), state_file, indent=4)
 
-        # Append the current state to the log file
         with open('state_log.txt', 'a') as log_file:
             log_file.write(json.dumps(self.to_dict()) + '\n')
 
     def generate_new_rate(self):
         current_rate = self.state["rate"]
         delta = self.config["delta"]
-        new_rate = round(random.uniform(current_rate - delta, current_rate + delta), 2)
+        new_rate = round(random.uniform(current_rate - delta, current_rate + delta), 1)
         return new_rate
+
+    def next_rate(self):
+        new_rate = self.generate_new_rate()
+        self.state["rate"] = new_rate
+        self.save_state()
+        print(f"New rate: {new_rate}")
 
     def get_balance(self):
         return self.state["balance_uah"], self.state["balance_usd"]
@@ -77,11 +74,12 @@ class Trader:
     def sell_all(self):
         self.sell_usd(self.state["balance_usd"])
 
-    def next_rate(self):
-        new_rate = self.generate_new_rate()
-        self.state["rate"] = new_rate
-        self.save_state()
-        print(f"New rate: {new_rate}")
+    def to_dict(self):
+        return {
+            "rate": self.state["rate"],
+            "balance_uah": round(self.state["balance_uah"], 3),
+            "balance_usd": round(self.state["balance_usd"], 3)
+        }
 
     def restart(self):
         initial_state = {
