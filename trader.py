@@ -1,110 +1,136 @@
+import argparse
 import json
 import random
-import os
-import argparse
-from datetime import datetime
 
 
-class CurrencyTrader:
-    def __init__(self):
-        self.load_config()
-        self.load_state()
-
-    def load_config(self):
-        with open("config.json", "r") as config_file:
-            self.config = json.load(config_file)
+class Trader:
+    def __init__(self, config):
+        self.config = config
+        self.state = self.load_state()
 
     def load_state(self):
-        if os.path.exists("state.json"):
-            with open("state.json", "r") as state_file:
-                self.state = json.load(state_file)
-        else:
-            self.state = {
+        try:
+            with open('state.json') as state_file:
+                state = json.load(state_file)
+        except (FileNotFoundError, json.JSONDecodeError):
+            # Use default state if file not found or if there's a decoding error
+            state = {
                 "rate": self.config["rate"],
-                "balance_uah": self.config["initial_balance_uah"],
-                "balance_usd": self.config["initial_balance_usd"],
-                "history": []
+                "balance_uah": self.config["available_uah"],
+                "balance_usd": self.config["available_usd"]
             }
-            self.save_state()
+
+        return state
+
+    def to_dict(self):
+        return {
+            "rate": self.state["rate"],
+            "balance_uah": self.state["balance_uah"],
+            "balance_usd": self.state["balance_usd"]
+        }
 
     def save_state(self):
-        with open("state.json", "w") as state_file:
-            json.dump(self.state, state_file, indent=2)
+        with open('state.json', 'w') as state_file:
+            json.dump(self.to_dict(), state_file, indent=4)
 
-    def get_current_rate(self):
-        return round(random.uniform(
-            self.config["rate"] - self.config["delta"],
-            self.config["rate"] + self.config["delta"]
-        ), 2)
+        # Append the current state to the log file
+        with open('state_log.txt', 'a') as log_file:
+            log_file.write(json.dumps(self.to_dict()) + '\n')
 
-    def execute_command(self, args):
-        command = args.command
-        if command == "NEXT":
-            new_rate = self.get_current_rate()
-            self.state["rate"] = new_rate
-            self.state["history"].append({"timestamp": str(datetime.now()), "event": "Rate changed", "rate": new_rate})
-            self.save_state()
-        elif command == "RATE":
-            print(self.state["rate"])
-        elif command == "BUY ALL":
-            self.buy_usd(self.state["balance_uah"])
-        elif command.startswith("BUY "):
-            amount = float(command.split(" ")[1])
-            self.buy_usd(amount)
-        elif command == "SELL ALL":
-            self.sell_usd(self.state["balance_usd"])
-        elif command.startswith("SELL "):
-            amount = float(command.split(" ")[1])
-            self.sell_usd(amount)
-        elif command == "AVAILABLE":
-            self.print_available_balances()
-        elif command == "RESTART":
-            self.restart_game()
-        else:
-            print("Невідома команда.")
+    def generate_new_rate(self):
+        current_rate = self.state["rate"]
+        delta = self.config["delta"]
+        new_rate = round(random.uniform(current_rate - delta, current_rate + delta), 2)
+        return new_rate
+
+    def get_balance(self):
+        return self.state["balance_uah"], self.state["balance_usd"]
+
+    def display_balance(self):
+        balance_uah, balance_usd = self.get_balance()
+        print(f"UAH: {balance_uah:.2f}, USD: {balance_usd:.2f}")
 
     def buy_usd(self, amount):
-        cost = amount / self.state["rate"]
-        if cost <= self.state["balance_uah"]:
-            self.state["balance_uah"] -= cost
+        required_balance = amount * self.state["rate"]
+        if self.state["balance_uah"] >= required_balance:
+            self.state["balance_uah"] -= required_balance
             self.state["balance_usd"] += amount
-            self.state["history"].append({"timestamp": str(datetime.now()), "event": "USD bought", "amount": amount})
             self.save_state()
+            print(f"Successfully bought {amount:.2f} USD.")
         else:
-            print(f"UNAVAILABLE: REQUIRED BALANCE UAH {cost:.2f}, AVAILABLE {self.state['balance_uah']:.2f}")
+            print(
+                f"UNAVAILABLE. REQUIRED BALANCE UAH {required_balance:.2f}, AVAILABLE {self.state['balance_uah']:.2f}")
 
     def sell_usd(self, amount):
-        if amount <= self.state["balance_usd"]:
-            income = amount * self.state["rate"]
-            self.state["balance_uah"] += income
+        if self.state["balance_usd"] >= amount:
             self.state["balance_usd"] -= amount
-            self.state["history"].append({"timestamp": str(datetime.now()), "event": "USD sold", "amount": amount})
+            self.state["balance_uah"] += amount * self.state["rate"]
             self.save_state()
+            print(f"Successfully sold {amount:.2f} USD.")
         else:
-            print(f"UNAVAILABLE: REQUIRED BALANCE USD {amount:.2f}, AVAILABLE {self.state['balance_usd']:.2f}")
+            print(f"UNAVAILABLE. REQUIRED BALANCE USD {amount:.2f}, AVAILABLE {self.state['balance_usd']:.2f}")
 
-    def print_available_balances(self):
-        print(f"USD {self.state['balance_usd']:.2f} UAH {self.state['balance_uah']:.2f}")
+    def buy_all(self):
+        max_usd_to_buy = self.state["balance_uah"] / self.state["rate"]
+        self.buy_usd(max_usd_to_buy)
 
-    def restart_game(self):
-        self.state = {
+    def sell_all(self):
+        self.sell_usd(self.state["balance_usd"])
+
+    def next_rate(self):
+        new_rate = self.generate_new_rate()
+        self.state["rate"] = new_rate
+        self.save_state()
+        print(f"New rate: {new_rate}")
+
+    def restart(self):
+        initial_state = {
             "rate": self.config["rate"],
-            "balance_uah": self.config["initial_balance_uah"],
-            "balance_usd": self.config["initial_balance_usd"],
-            "history": []
+            "balance_uah": self.config["available_uah"],
+            "balance_usd": self.config["available_usd"]
         }
+        self.state = initial_state
         self.save_state()
 
 
-def parse_arguments():
-    parser = argparse.ArgumentParser(description="Currency trader CLI")
-    parser.add_argument("command",
-                        choices=["NEXT", "RATE", "BUY", "SELL", "BUY ALL", "SELL ALL", "AVAILABLE", "RESTART"],
-                        help="Specify the command to execute.")
-    return parser.parse_args()
+def main():
+    with open('config.json') as config_file:
+        config = json.load(config_file)
+
+    trader = Trader(config)
+
+    parser = argparse.ArgumentParser(description="Currency Trader")
+    parser.add_argument("action",
+                        choices=["RATE", "AVAILABLE", "BUY", "SELL", "BUY ALL", "SELL ALL", "NEXT", "RESTART"])
+    parser.add_argument("amount", nargs='?', default=None, type=str)
+
+    args = parser.parse_args()
+
+    if args.action == "RATE":
+        print(trader.state["rate"])
+    elif args.action == "AVAILABLE":
+        trader.display_balance()
+    elif args.action == "BUY":
+        if args.amount is not None:
+            if args.amount.lower() == "all":
+                trader.buy_all()
+            else:
+                trader.buy_usd(float(args.amount))
+        else:
+            print("Please specify the amount to buy.")
+    elif args.action == "SELL":
+        if args.amount is not None:
+            if args.amount.lower() == "all":
+                trader.sell_all()
+            else:
+                trader.sell_usd(float(args.amount))
+        else:
+            print("Please specify the amount to sell.")
+    elif args.action == "NEXT":
+        trader.next_rate()
+    elif args.action == "RESTART":
+        trader.restart()
 
 
 if __name__ == "__main__":
-    args = parse_arguments()
-    trader = CurrencyTrader()
-    trader.execute_command(args)
+    main()

@@ -1,6 +1,6 @@
 {
-  "delta": 0.5,
-  "rate": 36.00,
-  "initial_balance_uah": 10000.00,
-  "initial_balance_usd": 0.00
+  "available_usd": 0.0,
+  "available_uah": 10000.0,
+  "rate": 36.0,
+  "delta": 0.5
 }
